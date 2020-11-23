@@ -1,0 +1,5 @@
+.vscode/*
+*.ipynb
+for_debug.py
+LNPR_BOOK_CODES/*
+*.pyc
