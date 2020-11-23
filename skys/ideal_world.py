@@ -127,6 +127,11 @@ class IdealRobot:
         self.sensor = sensor
 
     def one_step(self, time_interval):
+        """
+        ロボットはセンサーで測定してから動き、
+        その次のフレームでdrawが走るので、
+        センサーの値は1フレーム前のものとなる。
+        """
         if not self.agent:
             return
         if self.sensor:
