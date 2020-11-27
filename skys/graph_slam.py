@@ -23,24 +23,37 @@ class PsiCamera(real_world.Camera):
         self.lastdata = observed
         return observed
 
-class LoggerAgent(ideal_world.Agent):
-    def __init__(
-        self,
-        nu,
-        omega,
-        interval_time,
-        init_pose):
-        super().__init__(nu,omega)
-        self.interval_time=interval_time
-        self.pose=init_pose
-        self.step=0
-        self.log=open("log.txt","w")
 
-    def decision(self,observation):
+class LoggerAgent(ideal_world.Agent):
+    """
+    one_step→drawなので
+    最後に描写された状態まで記録される。
+    """
+
+    def __init__(
+            self,
+            nu,
+            omega,
+            interval_time,
+            init_pose):
+        super().__init__(nu, omega)
+        self.interval_time = interval_time
+        self.pose = init_pose
+        self.step = 0
+        self.log = open("log.txt", "w")
+
+    def decision(self, observation):
         if len(observation) != 0:
-            self.log.write("x {} {} {} {}\n".format(self.step,*self.pose))
+            pose_log = "x {} {} {} {}\n".format(
+                self.step,
+                *self.pose)
+            self.log.write(pose_log)
             for obs in observation:
-                self.log.write("z {} {} {} {}\n".format(self.step,obs[1],*obs[0]))
+                sensor_log="z {} {} {} {} {}\n".format(
+                    self.step,
+                    obs[1], 
+                    *obs[0])
+                self.log.write(sensor_log)
 
             self.step += 1
             self.log.flush()
@@ -51,4 +64,4 @@ class LoggerAgent(ideal_world.Agent):
             self.interval_time,
             self.pose)
 
-        return self.nu,self.omega
+        return self.nu, self.omega
