@@ -49,7 +49,7 @@ def draw_edges(edges, ax):
 
 def draw(xs, zlist, edges):
     ax = make_ax()
-    # draw_trajectory(xs, ax)
+    draw_trajectory(xs, ax)
     draw_observations(xs, zlist, ax)
     draw_edges(edges, ax)
     plt.show()
@@ -82,7 +82,14 @@ def read_data():
 
 
 class ObsEdge:
-    def __init__(self, t1, t2, z1, z2, xs):
+    def __init__(
+            self,
+            t1,
+            t2,
+            z1,
+            z2,
+            xs,
+            sensor_noise_rate=[0.14, 0.05, 0.05]):
         """
         同じランドマークを記録した2つのデータについて、
         1つ目のデータのステップ数、2つ目のステップ数、
@@ -90,7 +97,7 @@ class ObsEdge:
         """
         assert z1[0] == z2[0]
 
-        self.t1, self.ts = t1, t2  # ステップ数
+        self.t1, self.t2 = t1, t2  # ステップ数
         self.x1, self.x2 = xs[t1], xs[t2]  # 姿勢
         self.z1, self.z2 = z1[1], z2[1]  # センサ値
 
@@ -108,10 +115,64 @@ class ObsEdge:
         ])
         while hat_e[2] >= math.pi:
             hat_e[2] -= math.pi*2
-        while hat_e[2] < math.pi:
+        while hat_e[2] < -math.pi:
             hat_e[2] += math.pi*2
 
-        print(hat_e)
+        ## 精度行列の作成 ##
+        Q1 = np.diag([
+            (self.z1[0]*sensor_noise_rate[0])**2,
+            sensor_noise_rate[1]**2,
+            sensor_noise_rate[2]**2
+        ])
+        R1 = -np.array(
+            [[c1, -self.z1[0]*s1,  0],
+             [s1,  self.z1[0]*c1,  0],
+             [0,              1, -1]]
+        )
+        Q2 = np.diag([
+            (self.z2[0]*sensor_noise_rate[0])**2,
+            sensor_noise_rate[1]**2,
+            sensor_noise_rate[2]**2
+        ])
+        R2 = np.array(
+            [[c2, -self.z2[0]*s2,  0],
+             [s2,  self.z2[0]*c2,  0],
+             [0,              1, -1]]
+        )
+
+        Sigma = R1.dot(Q1).dot(R1.T)+R2.dot(Q2).dot(R2.T)
+        Omega = np.linalg.inv(Sigma)
+
+        ## グラフ精度行列と係数ベクトルの各部分を計算 ##
+        B1 = -np.array(
+            [[1, 0, -self.z1[0]*s1],
+             [0, 1,  self.z1[0]*c1],
+             [0, 0,              1]]
+        )
+        B2 = np.array(
+            [[1, 0, -self.z2[0]*s2],
+             [0, 1,  self.z2[0]*c2],
+             [0, 0,              1]]
+        )
+
+        self.omega_upperleft = B1.T.dot(Omega).dot(B1)
+        self.omega_upperright = B1.T.dot(Omega).dot(B2)
+        self.omega_bottomleft = B2.T.dot(Omega).dot(B1)
+        self.omega_bottomright = B2.T.dot(Omega).dot(B2)
+
+        self.xi_upper = -B1.T.dot(Omega).dot(hat_e)
+        self.xi_bottom = -B2.T.dot(Omega).dot(hat_e)
+
+
+def add_edge(edge, Omega, xi):
+    f1, f2 = edge.t1*3, edge.t2*3
+    t1, t2 = f1+3, f2+3
+    Omega[f1:t1, f1:t1] += edge.omega_upperleft
+    Omega[f1:t1, f2:t2] += edge.omega_upperright
+    Omega[f2:t2, f1:t1] += edge.omega_bottomleft
+    Omega[f2:t2, f2:t2] += edge.omega_bottomright
+    xi[f1:t1] += edge.xi_upper
+    xi[f2:t2] += edge.xi_bottom
 
 
 def make_edges(hat_xs, zlist):
@@ -150,5 +211,29 @@ def make_edges(hat_xs, zlist):
 
 if __name__ == "__main__":
     hat_xs, zlist = read_data()
-    edges = make_edges(hat_xs, zlist)
+    dim = len(hat_xs)*3
+    for n in range(1, 100):
+        # エッジ、グラフ精度行列の作成
+        edges = make_edges(hat_xs, zlist)
+        Omega = np.zeros((dim, dim))
+        xi = np.zeros(dim)
+        Omega[0:3, 0:3] += np.eye(3)*1e6
+
+        # 軌跡を動かす量(更新差分)の計算
+        for e in edges:
+            add_edge(e, Omega, xi)
+
+        delta_xs = np.linalg.inv(Omega).dot(xi)
+
+        # 推定値の更新
+        for i in range(len(hat_xs)):
+            hat_xs[i] += delta_xs[i*3:(i+1)*3]
+
+        # 終了判定
+        diff = np.linalg.norm(delta_xs)
+        print("{}回目の繰り返し: {:.3f}".format(n, diff))
+        if diff < 0.01:
+            draw(hat_xs, zlist, edges)
+            break
+
     draw(hat_xs, zlist, edges)
