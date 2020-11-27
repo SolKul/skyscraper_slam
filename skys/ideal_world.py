@@ -63,7 +63,7 @@ class World:
         self.time_span = time_span
         self.time_interval = time_interval
         self.debug = debug
-        self.first_frame = True
+        self.fs_frame = 1
 
     def append(self, obj):
         self.objects.append(obj)
@@ -87,28 +87,44 @@ class World:
                 fig,
                 self.one_step,
                 fargs=(elems, ax),
-                frames=int(self.time_span/self.time_interval),
+                frames=int(self.time_span/self.time_interval)+1,
                 interval=int(self.time_interval*1000),
                 repeat=False)
             plt.show()
 
     def one_step(self, i, elems, ax):
+        """
+        最初2フレーム目でdrawで描写
+        その後はonestep動き、drawで描写
+        """
+        if self.fs_frame == 3:
+            while elems:
+                elems.pop().remove()
+            time_text = ax.text(
+                -4.4,
+                4.5,
+                "t = {:.2f}".format(self.time_interval*i),
+                fontsize=10)
+            elems.append(time_text)
+            for obj in self.objects:
+                if hasattr(obj, "one_step"):
+                    obj.one_step(self.time_interval)
+                obj.draw(ax, elems)
         # そのフレームが1番最初のフレームだったら、one_stepを実行しない
-        if self.first_frame:
-            self.first_frame = False
+        elif self.fs_frame == 1:
+            self.fs_frame = 2
             return
-        while elems:
-            elems.pop().remove()
-        time_text = ax.text(
-            -4.4,
-            4.5,
-            "t = {:.2f}".format(self.time_interval*i),
-            fontsize=10)
-        elems.append(time_text)
-        for obj in self.objects:
-            obj.draw(ax, elems)
-            if hasattr(obj, "one_step"):
-                obj.one_step(self.time_interval)
+        elif self.fs_frame == 2:
+            self.fs_frame = 3
+            time_text = ax.text(
+                -4.4,
+                4.5,
+                "t = {:.2f}".format(self.time_interval*i),
+                fontsize=10)
+            elems.append(time_text)
+            for obj in self.objects:
+                obj.draw(ax, elems)
+            return
 
 
 class IdealRobot:
